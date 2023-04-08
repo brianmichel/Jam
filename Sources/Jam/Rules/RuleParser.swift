@@ -39,6 +39,9 @@ public struct RuleParser {
         }
     }
 
+    /// Asynchronously parse a file into a set of ``Rule``s
+    /// - parameter file: A valid file URL.
+    /// - returns: An array of parsed ``Rule``s (this can be empty if no parsable rules are present in the file).
     public func parse(file: String) async -> [Rule] {
         guard let reader = StreamReader(path: file) else { return [] }
 
@@ -56,6 +59,8 @@ public struct RuleParser {
         return rules
     }
 
+    // MARK: - Rule-specific Parsing Functions
+    
     private func parseDomainSpecificCSSException(rule: String) -> Rule? {
         let components = rule.components(separatedBy: "#@#")
         guard components.count == 2 else { return nil }
@@ -99,7 +104,7 @@ public struct RuleParser {
         var options: String? = nil
 
         // If a URL rule has a `$` in it, that means that it can contain two different sides to it
-        // the structure can kind of look liks this pattern$options, so we split these
+        // the structure can kind of look like this `pattern$options`, so we split these
         // and bind them into our variables. Otherwise, we assume it's all pattern.
         if rule.contains("$") {
             // -adap.$domain=~l-adap.org
@@ -170,7 +175,7 @@ public struct RuleParser {
                     mutableOption = String(mutableOption.dropFirst())
                 }
 
-                // While all of these are 'options' in EasyList parlence, a few options like:
+                // While all of these are 'options' in EasyList parlance, a few options like:
                 // - third-party
                 // - domain
                 // are actually not triggering elements, but map to different trigger parameters.
