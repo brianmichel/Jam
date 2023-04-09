@@ -1,10 +1,21 @@
 import Foundation
 
 /// A generator that takes in an array of ``Rule`` structurs and returns an array of well-formed dictionaries [compatible](https://developer.apple.com/documentation/safariservices/creating_a_content_blocker#overview) with WKWebView/WebKit's content blocking system.
-public struct WebKitRuleGenerator {
+public struct WebKitRuleGenerator: RuleGenerator {
     public init() {}
 
-    /// Generate a JSON-compatible array of dictionries that represent the rules that can be applied.
+    /// Generate JSON Data to write to disk.
+    ///
+    /// - parameter rules: The input set of rules to generate data for.
+    /// - returns: UTF-8 encoded JSON data.
+    /// - throws: This can throw errors from serializing the JSON object to data.
+    public func generateData(for rules: [Rule]) throws -> Data {
+        let rules = generate(for: rules)
+        let data = try JSONSerialization.data(withJSONObject: rules)
+        return data
+    }
+
+    /// Generate a JSON-compatible array of dictionaries that represent the rules that can be applied.
     ///
     /// - parameter rules: An array of ``Rule``s that you would like to transform into WKWebView/WebKit
     /// compliant JSON elements.
