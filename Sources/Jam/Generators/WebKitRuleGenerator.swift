@@ -25,17 +25,16 @@ public struct WebKitRuleGenerator {
                 guard let domains else { return nil }
 
                 for domain in domains {
-                    var hiding = cssHiding[domain] ?? Set()
+                    let key = domain.replacingOccurrences(of: ".", with: "\\.")
+                    var hiding = cssHiding[key] ?? Set()
                     hiding.insert(selector)
-                    cssHiding[domain] = hiding
+                    cssHiding[key] = hiding
                 }
                 return nil
             case let .url(
                 pattern: pattern,
                 options: options,
-                matchCase: _,
-                domains: _,
-                action: _
+                action: action
             ):
                 var filter = ".*"
                 switch pattern.type {
@@ -43,31 +42,47 @@ public struct WebKitRuleGenerator {
                     let newPattern = pattern.trigger
                         .replacingOccurrences(of: "|", with: "\\|")
                         .replacingOccurrences(of: "*", with: ".*")
-                        .replacingOccurrences(of: "^", with: "")
-                    filter = "^https?://.*\(newPattern)"
+                        .replacingOccurrences(of: ".", with: "\\.")
+                        .replacingOccurrences(of: "^", with: "[/:]")
+                    filter = "^[^:]+:(//)?.*\(newPattern)"
                 case .wildcard:
                     let newPattern = pattern.trigger
                         .replacingOccurrences(of: "|", with: "\\|")
                         .replacingOccurrences(of: "*", with: ".*")
-                        .replacingOccurrences(of: "^", with: "")
-                    filter = "^https?://.*\(newPattern).*"
+                        .replacingOccurrences(of: ".", with: "\\.")
+                        .replacingOccurrences(of: "^", with: "[/:]")
+                    filter = "^[^:]+:(//)?.*\(newPattern)"
                 case .regex:
                     //filter = pattern
-                    break
+                    return nil
                 }
 
                 var trigger: [String: Any] = [
                     "url-filter": filter,
                 ]
 
-                if !options.elements.isEmpty {
-                    trigger["resource-type"] = options.elements.map(\.webKitResourceType)
+                trigger["resource-type"] = Array(Set(Rule.Options.ElementType.allCases.map(\.webKitResourceType)))
+
+                if !options.elements.allowed.isEmpty {
+                    let allMinusAllowed = Set(Rule.Options.ElementType.allCases)
+                        .subtracting(options.elements.allowed)
+                    trigger["resource-type"] = Array(Set(allMinusAllowed.map(\.webKitResourceType)))
                 }
+
+                if !options.domains.blocked.isEmpty {
+                    trigger["if-domain"] = options.domains.blocked
+                }
+
+                if options.source != .any {
+                    trigger["load-type"] = [options.source.webKitSourceType]
+                }
+
+                trigger["url-filter-is-case-sensitive"] = options.matchCase
 
                 return [
                     "trigger": trigger,
                     "action": [
-                        "type": "block"
+                        "type": action == .deny ? "block" : "ignore-previous-rules"
                     ]
                 ]
             }
@@ -76,9 +91,9 @@ public struct WebKitRuleGenerator {
         for (key, value) in cssHiding {
             all.append([
                 "trigger": [
-                    "url-filter": ".*",
+                    "url-filter": "^[^:]+:(//)?([^/:]*\\.)?\(key)[/:]",
                     "if-domain": [key]
-                ],
+                ] as [String : Any],
                 "action": [
                     "type": "css-display-none",
                     "selector": value.joined(separator: ", ")
@@ -124,6 +139,19 @@ extension Rule.Options.ElementType {
             return "other"
         case .webbundle:
             return "other"
+        }
+    }
+}
+
+extension Rule.Options.SourceType {
+    var webKitSourceType: String {
+        switch self {
+        case .any:
+            return "any"
+        case .first:
+            return "first-party"
+        case .third:
+            return "third-party"
         }
     }
 }

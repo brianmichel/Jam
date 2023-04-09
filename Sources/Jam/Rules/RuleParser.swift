@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "me.foureyes.WebJam", category: "RuleParser")
+private let logger = Logger(subsystem: "me.foureyes.Jam", category: "RuleParser")
 
 /// The parser that can turn text into well formed content blocking rules.
 /// A more formal definition for rules can be found [here](https://help.adblockplus.org/hc/en-us/articles/360062733293-How-to-write-filters#elemhide_basic).
@@ -60,7 +60,7 @@ public struct RuleParser {
     }
 
     // MARK: - Rule-specific Parsing Functions
-    
+
     private func parseDomainSpecificCSSException(rule: String) -> Rule? {
         let components = rule.components(separatedBy: "#@#")
         guard components.count == 2 else { return nil }
@@ -78,7 +78,7 @@ public struct RuleParser {
     private func parseElementHidingRule(rule: String) -> Rule? {
         if rule.starts(with: "##") {
             // This is a rule like '## .ad-wide' and it contains no domain.
-            let trimmed = String(rule.dropFirst(3).trimmingCharacters(in: .whitespacesAndNewlines))
+            let trimmed = String(rule.dropFirst(2).trimmingCharacters(in: .whitespacesAndNewlines))
             guard !trimmed.isEmpty else { return nil }
 
             logger.debug("[Element Hiding] Domains: nil, Selector: \(trimmed)")
@@ -108,11 +108,22 @@ public struct RuleParser {
         // and bind them into our variables. Otherwise, we assume it's all pattern.
         if rule.contains("$") {
             // -adap.$domain=~l-adap.org
-            let components = rule.components(separatedBy: "$")
-            guard components.count == 2 else { return nil }
+            // $popup,third-party,domain=thign.tv|lol.com|hmm.com
+            guard let positionOfDollarSign = rule.firstIndex(of: "$") else {
+                // For some reason there is no first index of the `$` character, bail.
+                return nil
+            }
+            // See if this is a URL rule that does not contain a domain.
+            if rule.distance(from: rule.startIndex, to: positionOfDollarSign) == 0 {
+                pattern = ".*"
+                options = String(rule.dropFirst())
+            } else {
+                let components = rule.components(separatedBy: "$")
+                guard components.count == 2 else { return nil }
 
-            pattern = components[0]
-            options = components[1]
+                pattern = components[0]
+                options = components[1]
+            }
         }
         else {
             // The rule is the pattern, there are no options.
@@ -122,9 +133,9 @@ public struct RuleParser {
         guard let p = pattern else { return nil }
 
         // Determine whether this rule is an exception or not.
-        var exception = false
+        var blocking = true
         if p.hasPrefix("@@") {
-            exception = true
+            blocking = false
             pattern = String(p.dropFirst(2))
         }
 
@@ -161,8 +172,11 @@ public struct RuleParser {
         }
 
         var sourceType: Rule.Options.SourceType = .any
-        var elementTypes = [Rule.Options.ElementType]()
-        var domains = [String]()
+        var elementTypesToAllow = [Rule.Options.ElementType]()
+        var elementTypesToBlock = [Rule.Options.ElementType]()
+        var matchCase = false
+        var domainsAllow = [String]()
+        var domainsBlocked = [String]()
 
         // If there are options, parse them.
         if let o = options, !o.isEmpty {
@@ -181,34 +195,56 @@ public struct RuleParser {
                 // are actually not triggering elements, but map to different trigger parameters.
                 if let type = Rule.Options.ElementType(rawValue: mutableOption) {
                     // type is known, add options
-                    elementTypes.append(type)
+                    if negated {
+                        elementTypesToAllow.append(type)
+                    } else {
+                        elementTypesToBlock.append(type)
+                    }
                 } else if mutableOption == "third-party" {
-                    sourceType = .third
-                } else if mutableOption == "~third-party" {
-                    sourceType = .first
+                    sourceType = negated ? .first : .third
+                } else if mutableOption == "match-case" {
+                    matchCase = true
                 } else if mutableOption.hasPrefix("domain=") {
                     // Domain list format is 'domain=url1|url2|url3' so we need
                     // to split it out to find all of the domains and whether or not
                     // the are negated or not.
                     let rawDomains = mutableOption.dropFirst(7)
-                    let parsedDomains = rawDomains.components(separatedBy: "|").map { domain in
-                        domain.hasPrefix("~") ? String(domain.dropFirst()) : domain
+                    rawDomains.components(separatedBy: "|").forEach { domain in
+                        let domainAllowed = domain.hasPrefix("~")
+                        if domainAllowed {
+                            domainsAllow.append(String(domain.dropFirst()))
+                        } else {
+                            domainsBlocked.append(domain)
+                        }
                     }
-                    domains = parsedDomains
                 }
             }
         }
 
-        let ruleOptions = Rule.Options(source: sourceType, elements: elementTypes)
-        let finalPattern = Rule.Pattern(trigger: p, leftAnchor: leftAnchor, rightAnchor: rightAnchor, type: patternType)
+        let ruleOptions = Rule.Options(
+            source: sourceType,
+            elements: .init(
+                allowed: elementTypesToAllow,
+                blocked: elementTypesToBlock
+            ),
+            domains: .init(
+                allowed: domainsAllow,
+                blocked: domainsBlocked
+            ),
+            matchCase: matchCase
+        )
+        let finalPattern = Rule.Pattern(
+            trigger: p,
+            leftAnchor: leftAnchor,
+            rightAnchor: rightAnchor,
+            type: patternType
+        )
 
-        logger.debug("[URL Blocking] Pattern: \(p), Exception: \(exception), Elements: \(elementTypes)")
+        logger.debug("[URL Blocking] Pattern: \(p), Will Block: \(blocking), Allow Elements: \(elementTypesToAllow), Blocked Elements: \(elementTypesToBlock)")
         return .url(
             pattern: finalPattern,
             options: ruleOptions,
-            matchCase: true,
-            domains: domains,
-            action: exception ? .allow : .deny
+            action: blocking ? .deny : .allow
         )
     }
 }

@@ -66,7 +66,7 @@ public enum Rule {
         }
 
         /// Element types that can trigger a rule.
-        public enum ElementType: String {
+        public enum ElementType: String, CaseIterable {
             /// All other elements that might be unspecified.
             case other
             /// All scripts.
@@ -97,10 +97,30 @@ public enum Rule {
             case webbundle
         }
 
+        /// The domains that should be considered for the rule.
+        public struct Domains {
+            /// These domains will **not** trigger the rule.
+            var allowed: [String]
+            /// These domains will trigger the rule
+            var blocked: [String]
+        }
+
+        /// The list of elements that should be considered for the rule.
+        public struct Elements {
+            /// These elements will **not** trigger the rule.
+            var allowed: [ElementType]
+            /// These elements will trigger the rule.
+            var blocked: [ElementType]
+        }
+
         /// The type of source that can trigger the rule.
         var source: SourceType
         /// The list of elements that can trigger the rule.
-        var elements: [ElementType]
+        var elements: Elements
+        /// The allow and blocked domains for the rule.
+        var domains: Domains
+        /// Whether or not the rule is case sensitive.
+        var matchCase: Bool
     }
 
     /// A CSS exception for a specific domain, meaning, this will unhide something more than likely.
@@ -120,8 +140,6 @@ public enum Rule {
     case url(
         pattern: Pattern,
         options: Options,
-        matchCase: Bool,
-        domains: [String],
         action: Action
     )
 }

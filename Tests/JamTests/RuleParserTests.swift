@@ -13,15 +13,14 @@ final class RuleParserTests: XCTestCase {
     func testParsingNonCommentRules_ReturnsSomething() throws {
         let rule = try XCTUnwrap(sut.parse(rule: ".com/ad/$~image,third-party,domain=~mediaplex.com|~warpwire.com"))
 
-        if case let Rule.url(pattern, options, matchCase, domains, action) = rule {
+        if case let Rule.url(pattern, options, action) = rule {
             XCTAssertEqual(pattern.trigger, ".com/ad/")
             XCTAssertEqual(options.source, .third)
-            XCTAssertEqual(domains.count, 2)
-            XCTAssertEqual(options.elements.count, 1)
+            XCTAssertEqual(options.domains.allowed.count, 2)
             XCTAssertEqual(pattern.type, .substring)
             XCTAssertEqual(pattern.leftAnchor, .none)
             XCTAssertEqual(pattern.rightAnchor, .none)
-            XCTAssertEqual(matchCase, true)
+            XCTAssertEqual(options.matchCase, false)
             XCTAssertEqual(action, .deny)
         }
     }
@@ -30,40 +29,42 @@ final class RuleParserTests: XCTestCase {
     func testParsingNonCommentRules_ReturnsJustRegexWithNoOptions() throws {
         let rule = try XCTUnwrap(sut.parse(rule: ".com/ad/"))
 
-        if case let Rule.url(pattern, options, matchCase, domains, action) = rule {
+        if case let Rule.url(pattern, options, action) = rule {
             XCTAssertEqual(pattern.trigger, ".com/ad/")
             XCTAssertEqual(options.source, .any)
-            XCTAssertEqual(domains.count, 0)
-            XCTAssertEqual(options.elements.count, 0)
+            XCTAssertEqual(options.domains.allowed.count, 0)
+            XCTAssertEqual(options.domains.blocked.count, 0)
+            XCTAssertEqual(options.elements.allowed.count, 0)
+            XCTAssertEqual(options.elements.blocked.count, 0)
             XCTAssertEqual(pattern.type, .substring)
             XCTAssertEqual(pattern.leftAnchor, .none)
             XCTAssertEqual(pattern.rightAnchor, .none)
-            XCTAssertEqual(matchCase, true)
+            XCTAssertEqual(options.matchCase, false)
             XCTAssertEqual(action, .deny)
         }
     }
 
     func testHTMLRulesShouldBeSkipped() throws {
-        let rule = try XCTUnwrap(sut.parse(rule: "### cmg-video-player-placeholder"))
+        let rule = try XCTUnwrap(sut.parse(rule: "###cmg-video-player-placeholder"))
 
         if case let Rule.elementHiding(domains: domains, selector: selector) = rule {
             XCTAssertNil(domains)
-            XCTAssertEqual(selector, "cmg-video-player-placeholder")
+            XCTAssertEqual(selector, "#cmg-video-player-placeholder")
         }
     }
 
     func testExceptionRulesShouldBeSkipped() throws {
         let rule = try XCTUnwrap(sut.parse(rule: "@@||www.google.*/search?q=*&oq=*&aqs=chrome.*&sourceid=chrome&$popup,third-party"))
 
-        if case let Rule.url(pattern, options, matchCase, domains, action) = rule {
+        if case let Rule.url(pattern, options, action) = rule {
             XCTAssertEqual(pattern.trigger, "www.google.*/search?q=*&oq=*&aqs=chrome.*&sourceid=chrome&")
             XCTAssertEqual(options.source, .third)
-            XCTAssertEqual(domains.count, 0)
-            XCTAssertEqual(options.elements.count, 1)
+            XCTAssertEqual(options.domains.allowed.count, 0)
+            XCTAssertEqual(options.domains.blocked.count, 0)
             XCTAssertEqual(pattern.type, .wildcard)
             XCTAssertEqual(pattern.leftAnchor, .subdomain)
             XCTAssertEqual(pattern.rightAnchor, .none)
-            XCTAssertEqual(matchCase, true)
+            XCTAssertEqual(options.matchCase, false)
             XCTAssertEqual(action, .allow)
         }
     }
@@ -73,21 +74,21 @@ final class RuleParserTests: XCTestCase {
         let rules = await sut.parse(file: path)
 
         XCTAssertNotNil(rules, "Rules parsed from a file containing rules should not be nil.")
-        XCTAssertEqual(rules.count, 57188)
+        XCTAssertEqual(rules.count, 56011)
     }
 
     func testParsingUnbalancedRules_WorksSuccessfully() throws {
         let rule = try XCTUnwrap(sut.parse(rule: "$popup,third-party,domain=thign.tv|lol.com|hmm.com"))
 
-        if case let Rule.url(pattern, options, matchCase, domains, action) = rule {
-            XCTAssertEqual(pattern.trigger, "")
+        if case let Rule.url(pattern, options, action) = rule {
+            XCTAssertEqual(pattern.trigger, ".*")
             XCTAssertEqual(options.source, .third)
-            XCTAssertEqual(domains.count, 3)
-            XCTAssertEqual(options.elements.count, 1)
-            XCTAssertEqual(pattern.type, .substring)
+            XCTAssertEqual(options.domains.blocked.count, 3)
+            XCTAssertEqual(options.elements.blocked.count, 1)
+            XCTAssertEqual(pattern.type, .wildcard)
             XCTAssertEqual(pattern.leftAnchor, .none)
             XCTAssertEqual(pattern.rightAnchor, .none)
-            XCTAssertEqual(matchCase, true)
+            XCTAssertEqual(options.matchCase, false)
             XCTAssertEqual(action, .deny)
         }
     }
@@ -145,5 +146,14 @@ final class RuleParserTests: XCTestCase {
         }
 
         XCTAssertNotNil(rule, "Element Hiding rules with a single domain should parse successfully.")
+    }
+
+    func testParsingElementHidingRules_NoDomain_NoSpace_WorksSuccessfully() throws {
+        let rule = try XCTUnwrap(sut.parse(rule: "###AD_text"))
+
+        if case let Rule.elementHiding(domains: domains, selector: selector) = rule {
+            XCTAssertNil(domains)
+            XCTAssertEqual(selector, "#AD_text")
+        }
     }
 }
